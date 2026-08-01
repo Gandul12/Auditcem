@@ -189,12 +189,6 @@ function serializePlanner(row: typeof weeklyExecutionPlans.$inferSelect): Weekly
 }
 
 export async function ensureAuditSeedData(): Promise<void> {
-  const existingItem = await db.select({ id: auditItems.id }).from(auditItems).limit(1);
-
-  if (existingItem[0]) {
-    return;
-  }
-
   const now = new Date();
   const defaultActiveMonth = getDefaultActiveMonth(now);
 

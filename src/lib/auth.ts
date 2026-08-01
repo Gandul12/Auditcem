@@ -19,7 +19,7 @@ function sign(value: string, secret: string): string {
   return crypto.createHmac("sha256", secret).update(value).digest("base64url");
 }
 
-function safeEqual(first: string, second: string): boolean {
+export function safeEqual(first: string, second: string): boolean {
   const firstBuffer = Buffer.from(first);
   const secondBuffer = Buffer.from(second);
 

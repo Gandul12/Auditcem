@@ -18,10 +18,17 @@ export function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        retryAfterSeconds?: number;
+      };
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Login gagal.");
+        const retryMessage =
+          response.status === 429 && payload.retryAfterSeconds
+            ? ` Coba lagi dalam ${Math.max(1, Math.ceil(payload.retryAfterSeconds / 60))} menit.`
+            : "";
+        throw new Error(payload.error ?? `Login gagal.${retryMessage}`);
       }
 
       window.location.assign("/");

@@ -2,6 +2,8 @@
 
 import type { CSSProperties, FormEvent } from "react";
 import { useMemo, useState } from "react";
+import { AreaComparisonChart } from "@/components/AreaComparisonChart";
+import { DomainBreakdownChart } from "@/components/DomainBreakdownChart";
 import {
   AUDIT_RESULTS,
   type ActiveProgramMonth,
@@ -12,6 +14,8 @@ import {
   type DomainId,
   type PlannerStatus,
 } from "@/lib/audit-config";
+import { generateAuditInsight } from "@/lib/auditInsight";
+import { calculateDeadlineRisk, formatDaysRemaining } from "@/lib/deadlineRisk";
 import type {
   AuditCycleRecord,
   AuditDomainView,
@@ -52,6 +56,8 @@ type DashboardResponse = {
   data?: DashboardData;
   error?: string;
 };
+
+type DashboardViewMode = "area" | "compare";
 
 const DOMAIN_FILTER_ALL = "ALL";
 const RESULT_FILTER_ALL = "ALL";
@@ -104,6 +110,12 @@ function progressStyle(progress: number, accent: string): CSSProperties {
     width: `${Math.min(100, Math.max(0, progress))}%`,
     background: `linear-gradient(90deg, ${accent}, #F5A623)`,
   };
+}
+
+function getRiskBadgeClass(level: "waspada" | "berisiko"): string {
+  return level === "berisiko"
+    ? "border-red-300/25 bg-red-500/12 text-red-100"
+    : "border-amber-300/25 bg-amber-400/12 text-amber-100";
 }
 
 function getResultClass(result: AuditResult): string {
@@ -245,6 +257,7 @@ export function DashboardClient({ initialData }: Props) {
   const firstArea = initialData.areas[0] ?? "Cutting";
   const [data, setData] = useState<DashboardData>(initialData);
   const [selectedArea, setSelectedArea] = useState<AuditArea>(firstArea);
+  const [viewMode, setViewMode] = useState<DashboardViewMode>("area");
   const [expanded, setExpanded] = useState<Record<DomainId, boolean>>(() =>
     initialData.domains.reduce((accumulator, domain) => {
       accumulator[domain.id] = domain.targetProgramMonth === initialData.activeMonth;
@@ -302,6 +315,15 @@ export function DashboardClient({ initialData }: Props) {
     const requiredCycleCount = data.areas.length * data.domains.length * data.cycleMonths.length;
     return data.cycles.length >= requiredCycleCount && data.cycles.every((cycle) => cycle.status === "passed");
   }, [data.areas.length, data.cycles, data.cycleMonths.length, data.domains.length]);
+
+  const auditInsights = useMemo(
+    () =>
+      generateAuditInsight(
+        data.items.filter((item) => item.area === selectedArea),
+        data.findings.filter((finding) => finding.area === selectedArea),
+      ),
+    [data.findings, data.items, selectedArea],
+  );
 
   const filteredFindings = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -639,16 +661,59 @@ export function DashboardClient({ initialData }: Props) {
 
         {notice ? <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">{notice}</div> : null}
 
+        <div className="flex flex-col gap-3 rounded-[28px] border border-white/[0.07] bg-[#13161E]/90 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-2">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Mode tampilan</p>
+            <p className="mt-1 text-sm text-white/58">Pilih view area aktif atau bandingkan Cutting, Prep, dan CSC sekaligus.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setViewMode("area")}
+              className={`rounded-2xl border px-4 py-3 text-sm font-black uppercase tracking-[0.14em] transition ${
+                viewMode === "area"
+                  ? "border-amber-300/70 bg-[#F5A623] text-[#0D0F14]"
+                  : "border-white/[0.08] bg-white/[0.03] text-white/62 hover:border-amber-300/35 hover:text-white"
+              }`}
+            >
+              Per Area
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("compare")}
+              className={`rounded-2xl border px-4 py-3 text-sm font-black uppercase tracking-[0.14em] transition ${
+                viewMode === "compare"
+                  ? "border-amber-300/70 bg-[#F5A623] text-[#0D0F14]"
+                  : "border-white/[0.08] bg-white/[0.03] text-white/62 hover:border-amber-300/35 hover:text-white"
+              }`}
+            >
+              Bandingkan Semua Area
+            </button>
+          </div>
+        </div>
+
+        {viewMode === "compare" ? (
+          <AreaComparisonChart items={data.items} domains={data.domains} areas={data.areas} />
+        ) : (
+          <>
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {data.domains.map((domain) => {
             const stat = selectedStats[domain.id];
+            const risk = calculateDeadlineRisk(domain, stat.progress, new Date(data.generatedAt));
             return (
               <article key={domain.id} className="rounded-[28px] border bg-[#13161E]/92 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)]" style={{ borderColor: `${domain.accent}33` }}>
                 <div className="mb-5 flex items-start justify-between gap-4">
                   <div className="grid h-12 w-12 place-items-center rounded-2xl border text-sm font-black" style={{ borderColor: `${domain.accent}55`, backgroundColor: `${domain.accent}18`, color: domain.accent }}>
                     {domain.icon}
                   </div>
-                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-white/58">{stat.cycleShort}</span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-white/58">{stat.cycleShort}</span>
+                    {risk.level !== "aman" ? (
+                      <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getRiskBadgeClass(risk.level)}`}>
+                        ⚠ {risk.level}: {formatDaysRemaining(risk.daysRemaining)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <h2 className="font-heading text-2xl font-black tracking-[-0.04em] text-white">{domain.title}</h2>
                 <p className="mt-1 min-h-10 text-sm leading-5 text-white/50">{domain.fullName}</p>
@@ -667,12 +732,45 @@ export function DashboardClient({ initialData }: Props) {
           })}
         </section>
 
+        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <DomainBreakdownChart items={data.items} domains={data.domains} activeArea={selectedArea} />
+
+          <article className="rounded-[28px] border border-white/[0.07] bg-[#13161E]/90 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-6">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">
+                  Ringkasan Analisis Otomatis
+                </p>
+                <h3 className="font-heading mt-2 text-3xl font-black tracking-[-0.05em] text-white">
+                  Insight {selectedArea}
+                </h3>
+              </div>
+              <span className="grid h-11 w-11 place-items-center rounded-2xl border border-amber-300/25 bg-amber-300/10 text-lg">
+                ✦
+              </span>
+            </div>
+            <div className="space-y-3">
+              {auditInsights.map((insight, index) => (
+                <div key={`${index}-${insight}`} className="rounded-2xl border border-white/[0.06] bg-[#0D0F14]/55 px-4 py-3">
+                  <p className="text-sm leading-6 text-white/72">{insight}</p>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
         <div className="flex flex-col gap-3 rounded-[28px] border border-white/[0.07] bg-[#13161E]/90 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Control center</p>
             <p className="mt-1 text-sm text-white/62">Reset dapat dilakukan per area/domain atau total. Log temuan tetap disimpan.</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
+            <a href="/api/audit/export-excel" className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.14em] text-emerald-100 transition hover:border-emerald-300/50">
+              Export Excel
+            </a>
+            <a href="/api/audit/export-pdf" className="rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.14em] text-amber-100 transition hover:border-amber-300/50">
+              Export PDF Ringkas
+            </a>
             <button type="button" onClick={() => handleReset(undefined, selectedArea)} className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm font-black uppercase tracking-[0.14em] text-white/62 transition hover:border-amber-300/40 hover:text-white">
               Reset Area {selectedArea}
             </button>
@@ -787,6 +885,8 @@ export function DashboardClient({ initialData }: Props) {
             })}
           </div>
         </section>
+          </>
+        )}
 
         <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
           <div id="finding-form" className="rounded-[28px] border border-white/[0.07] bg-[#13161E]/90 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-6">

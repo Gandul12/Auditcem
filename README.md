@@ -14,6 +14,9 @@ Full-stack tracker progres audit untuk sertifikasi CEM Fase 1 Bulan 4–6, siklu
 - Audit Findings Log dengan field terstruktur: Root Cause, Action Plan, dan Lesson Learned.
 - Filter/search berdasarkan area, domain, hasil, dan isi temuan.
 - Generate ringkasan otomatis siap-copy untuk mentor dengan breakdown per area dan siklus bulanan.
+- Chart breakdown domain per area aktif dan mode "Bandingkan Semua Area" untuk Cutting/Prep/CSC.
+- Indikator risiko deadline otomatis per domain.
+- Export Excel data lengkap dan Export PDF ringkas untuk presentasi/status update.
 
 ## Environment variables
 
